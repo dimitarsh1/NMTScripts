@@ -1,0 +1,6 @@
+[submodule "MTTools/subword-nmt"]
+	path = MTTools/subword-nmt
+	url = https://github.com/rsennrich/subword-nmt
+[submodule "MTTools/tercom"]
+	path = MTTools/tercom
+	url = https://github.com/jhclark/tercom
