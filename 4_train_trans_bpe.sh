@@ -25,8 +25,7 @@ SCRIPTPATH=$( cd $( dirname $( readlink -f $0 ) ) && pwd )
 echo $SCRIPTPATH
 
 OPENNMT=${SCRIPTPATH}'/OpenNMT-py'
-# export CUDA_VISIBLE_DEVICES=0,1,2,3
-export CUDA_VISIBLE_DEVICES=2,3
+export CUDA_VISIBLE_DEVICES=0,1,2
 
 echo "4.1. Prepare the data..."
 
@@ -41,6 +40,7 @@ echo $TRG_VOC_SIZE
 
 if [ "$SKIPPREPROCESS" -eq "0" ] || [ ! -f $ENGINEDIR/data/ready_to_train.train.0.pt ];
 then
+    echo $SKIPPREPROCESS
     rm $ENGINEDIR/data/ready_to_train*
 
     python3 $OPENNMT/preprocess.py \
@@ -56,7 +56,10 @@ else
 fi
 
 echo "Launching GPU monitoring"
-GPUMONPID=$( nvidia-smi dmon -i 2,3 -s mpucv -d 5 -o TD > $MODELDIR/gpu.log & )
+GPUMONPID=$( nvidia-smi dmon -i 0,1,2 -s mpucv -d 1 -o TD > $MODELDIR/gpu.log & )
+mkdir $MODELDIR/power_log
+python power_monitor.py $MODELDIR/power_log &
+POWERMONPID=$!
 
 echo "4.2. Train..."
 echo "Options derived from: http://opennmt.net/OpenNMT-py/FAQ.html "
@@ -65,13 +68,13 @@ python $OPENNMT/train.py \
     -layers 6 -rnn_size 512 -word_vec_size 512 -transformer_ff 2048 -heads 8 \
     -encoder_type transformer -decoder_type transformer -position_encoding \
     -train_steps 202000 -max_generator_batches 2 -dropout 0.1 \
-    -batch_size 4096 -batch_type tokens -normalization tokens -accum_count 2 \
+    -batch_size 4096 -batch_type tokens -normalization tokens -accum_count 3 \
     -optim adam -adam_beta2 0.998 -decay_method noam -warmup_steps 2000 -learning_rate 2 \
     -max_grad_norm 0 -param_init 0 -param_init_glorot \
     -label_smoothing 0.1 -valid_steps 500 -save_checkpoint_steps 500 \
     -report_every 100 \
     -early_stopping 5 -early_stopping_criteria ppl accuracy \
-    -world_size 2 -gpu_ranks 0 1 \
+    -world_size 3 -gpu_ranks 0 1 2 \
     -log_file $MODELDIR/train.log
 
 A=$( grep 'Best' $MODELDIR/train.log | rev | cut -d ' ' -f 1 | rev )
@@ -83,6 +86,10 @@ echo 'Saving best model: ' $MODELNAME
 
 cp $MODELDIR/${MODELNAME} $MODELDIR/best_model_${A}_${B}.pl
 
+echo $GPUMONPID
+echo $POWERMONPID
+
 kill -s 9 $GPUMONPID
+kill -s 9 $POWERMONPID
 
 echo "Done."

@@ -24,8 +24,7 @@ SCRIPTPATH=$( cd $( dirname $( readlink -f $0 ) ) && pwd )
 echo $SCRIPTPATH
 
 OPENNMT=${SCRIPTPATH}'/OpenNMT-py'
-# export CUDA_VISIBLE_DEVICES=0,1,2,3
-export CUDA_VISIBLE_DEVICES=2,3
+export CUDA_VISIBLE_DEVICES=0,1,2
 
 echo "4.1. Prepare the data..."
 SRC=src
@@ -54,7 +53,10 @@ else
 fi
 
 echo "Launching GPU monitoring"
-GPUMONPID=$( nvidia-smi dmon -i 2,3 -s mpucv -d 5 -o TD > $MODELDIR/gpu.log & )
+GPUMONPID=$( nvidia-smi dmon -i 0,1,2 -s mpucv -d 1 -o TD > $MODELDIR/gpu.log & )
+mkdir $MODELDIR/power_log
+python power_monitor.py $MODELDIR/power_log &
+POWERMONPID=$!
 
 echo "4.2. Train LSTM..."
 echo "Options derived from: https://arxiv.org/abs/1703.03906 thanks to Gideon"
@@ -69,7 +71,7 @@ python3 $OPENNMT/train.py \
     -valid_steps 5000 -save_checkpoint_steps 5000 \
     -report_every 100 \
     -early_stopping 5 -early_stopping_criteria ppl accuracy \
-    -world_size 2 -gpu_ranks 0 1 \
+    -world_size 3 -gpu_ranks 0 1 2 \
     -log_file $MODELDIR/train.log
 
 A=$( grep 'Best' $MODELDIR/train.log | rev | cut -d ' ' -f 1 | rev );
@@ -81,6 +83,10 @@ echo 'Saving best model: ' $MODELNAME
 
 cp $MODELDIR/${MODELNAME} $MODELDIR/best_model_${A}_${B}.pl
 
+echo $GPUMONPID
+echo $POWERMONPID
+
 kill -s 9 $GPUMONPID
+kill -s 9 $POWERMONPID
 
 echo "Done."

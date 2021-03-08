@@ -9,7 +9,8 @@ MTTools=${MTTools}/MTTools
 
 if [ ! -e $REF.eval.tok ]
 then
-	$MTTools/tokenizer.perl -l $TRGLANG < $REF > $REF.eval.tok
+	$MTTools/detokenizer.perl -l $TRGLANG < $REF > $REF.detok
+	$MTTools/tokenizer.perl -l $TRGLANG < $REF.detok > $REF.eval.tok
 fi
 
 if [ ! -e $HYP.eval.tok ]

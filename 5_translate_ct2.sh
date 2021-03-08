@@ -31,7 +31,7 @@ then
 fi
 
 DATADIR=$ENGINEDIR/data
-MODELDIR=$ENGINEDIR/model
+MODELDIR=$2
 
 SCRIPTPATH=$( cd $( dirname $( readlink -f $0 ) ) && pwd )
 OPENNMT=${SCRIPTPATH}'/OpenNMT-py'
@@ -45,9 +45,6 @@ CUDA_VISIBLE_DEVICES=0,1,2
 echo $SKIPBPE
 if [ "$SKIPBPE" -eq "0" ];
 then
-    echo "BPEing"
-    echo $DATADIR
-    echo $INPUT
     $SUBWORDTools/apply_bpe.py -c $DATADIR/bpe.src < $INPUT > ${INPUT}.sw
     INPUT=${INPUT}.sw
 fi
@@ -56,33 +53,21 @@ echo $INPUT
 OUTPUT=${INPUT}.${SUFFIX}out
 
 echo "Launching GPU monitoring"
-GPUMONPID=$( nvidia-smi dmon -i ${GPUID} -s mpucv -d 1 -o TD > $MODELDIR/gpu_trans.log & )
-rm $MODELDIR/power_log_trans -rf
-mkdir $MODELDIR/power_log_trans
-python power_monitor.py $MODELDIR/power_log_trans &
+GPUMONPID=$( nvidia-smi dmon -i ${GPUID} -s mpucv -d 5 -o TD > $ENGINEDIR/model/gpu_trans_ct2${SUFFIX}.log & )
+rm $ENGINEDIR/model/power_log_trans_ct2${SUFFIX} -rf
+mkdir $ENGINEDIR/model/power_log_trans_ct2${SUFFIX}
+python power_monitor.py $ENGINEDIR/model/power_log_trans_ct2${SUFFIX} &
 POWERMONPID=$!
 
-A=$( grep 'Best' $MODELDIR/train.log | rev | cut -d ' ' -f 1 | rev )
-B=$( grep -B4 ${A}'.pt' $MODELDIR/train.log | head -2 | rev | cut -d ' ' -f 1 | rev | tr '\n' '_' | sed -e 's/_$//g')
-
-MODELNAME='model_step_'${A}'.pt'
-
-echo 'Saving best model: ' $MODELNAME
-
-BESTMODEL=best_model_${A}_${B}.pt
-cp $MODELDIR/${MODELNAME} $MODELDIR/${BESTMODEL}
 
 echo 'Launching translation on GPU ' $GPUID
-python3 $OPENNMT/translate.py \
-    --model $MODELDIR/${BESTMODEL} \
-    --gpu ${GPUID} \
-    --src ${INPUT} \
+python3 5_translate_ct2.py \
+    --model-dir $MODELDIR \
+    --gpuid ${GPUID} \
+    --input ${INPUT} \
     --output ${OUTPUT}
 
-echo $GPUMONPID
-echo $POWERMONPID
-
-kill $GPUMONPID
+kill -s 9 $GPUMONPID
 kill $POWERMONPID
 
 echo "Done."

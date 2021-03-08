@@ -20,7 +20,9 @@ fi
 if [ -z $SUFFIX ]
 then
     SUFFIX=''
+    SFX = ''
 else
+    SFX=$SUFFIX
     SUFFIX=${SUFFIX}'.'
 fi
 
@@ -53,37 +55,31 @@ then
 fi
 
 echo $INPUT
-OUTPUT=${INPUT}.${SUFFIX}out
+OUTPUT=${INPUT}.server.${SUFFIX}out
 
 echo "Launching GPU monitoring"
-GPUMONPID=$( nvidia-smi dmon -i ${GPUID} -s mpucv -d 1 -o TD > $MODELDIR/gpu_trans.log & )
-rm $MODELDIR/power_log_trans -rf
-mkdir $MODELDIR/power_log_trans
-python power_monitor.py $MODELDIR/power_log_trans &
+GPUMONPID=$( nvidia-smi dmon -i ${GPUID} -s mpucv -d 1 -o TD > $MODELDIR/gpu_trans_server${SUFFIX}log & )
+python power_monitor.py $MODELDIR/power_log_trans_server${SFX} &
 POWERMONPID=$!
 
-A=$( grep 'Best' $MODELDIR/train.log | rev | cut -d ' ' -f 1 | rev )
-B=$( grep -B4 ${A}'.pt' $MODELDIR/train.log | head -2 | rev | cut -d ' ' -f 1 | rev | tr '\n' '_' | sed -e 's/_$//g')
+echo 'Launching translation server on GPU ' $GPUID
+python3 $OPENNMT/server.py \
+    --config=$MODELDIR/server_config.json \
+    --ip="0.0.0.${GPUID}" \
+    --port="5000" &
 
-MODELNAME='model_step_'${A}'.pt'
-
-echo 'Saving best model: ' $MODELNAME
-
-BESTMODEL=best_model_${A}_${B}.pt
-cp $MODELDIR/${MODELNAME} $MODELDIR/${BESTMODEL}
-
-echo 'Launching translation on GPU ' $GPUID
-python3 $OPENNMT/translate.py \
-    --model $MODELDIR/${BESTMODEL} \
-    --gpu ${GPUID} \
-    --src ${INPUT} \
-    --output ${OUTPUT}
+rm ${OUTPUT}
+while read -r line
+do 
+	#echo $line;
+	curl --fail --silent -X POST -H "Content-Type: application/json" -d "[{\"src\":\"${line}\", \"id\":0}]" http://0.0.0.${GPUID}:5000/translator/translate | jq '.[0]."tgt"' >> ${OUTPUT};
+done < ${INPUT}
 
 echo $GPUMONPID
 echo $POWERMONPID
 
-kill $GPUMONPID
-kill $POWERMONPID
+kill -s 9 $GPUMONPID
+kill -s 9 $POWERMONPID
 
 echo "Done."
 
