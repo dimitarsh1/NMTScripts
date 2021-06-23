@@ -135,6 +135,36 @@ def get_bleu_sacrebleu(sys, ref, lang):
     bleu = sacrebleu.corpus_bleu(tmp_sys, [tmp_ref])
     return bleu.score
 
+def get_ter_sacrebleu(sys, ref, lang):
+    ''' Computing TER using sacrebleu
+
+        :param sysname: the name of the system
+        :param sys: the sampled sentences from the translation
+        :param ref: the reference sentences
+        :param lang: the langauge for detokenization
+        :returns: a socre (float)
+    '''
+    detokenize = MosesDetokenizer(lang)
+    tmp_sys = [detokenize(s.split()) for s in sys]
+    tmp_ref = [detokenize(r.split()) for r in ref]
+    ter = sacrebleu.corpus_ter(tmp_sys, [tmp_ref])
+    return ter.score
+
+def get_chrf_sacrebleu(sys, ref, lang):
+    ''' Computing TER using sacrebleu
+
+        :param sysname: the name of the system
+        :param sys: the sampled sentences from the translation
+        :param ref: the reference sentences
+        :param lang: the langauge for detokenization
+        :returns: a socre (float)
+    '''
+    detokenize = MosesDetokenizer(lang)
+    tmp_sys = [detokenize(s.split()) for s in sys]
+    tmp_ref = [detokenize(r.split()) for r in ref]
+    chrf = sacrebleu.corpus_chrf(tmp_sys, [tmp_ref])
+    return chrf.score
+
 def compute_metric(metric_func, sentences, ref, lang, sample_idxs, iters):
     ''' Computing metric
 
@@ -260,49 +290,45 @@ def main():
             raise SystemExit('Inconsistent number of sentences')
 
     logging.warning("Translation files read")
+
     # Compute overall metrics
     for sys in sentences:
         print(" ".join(["BLEU", sys, str(get_bleu_sacrebleu(sentences[sys], ref, args.language))]))
         logging.warning("BLEU Computed")
 
-        print(" ".join(["TER", sys, str(compute_ter_multeval(sys + "_TER_DIR", sentences[sys], ref, args.language))]))
-        #print(" ".join(["BLEU MULTEVAL", sys, str(compute_bleu_multeval(sys + "_BLEU_DIR", sentences[sys], ref, args.language))]))
+        print(" ".join(["TER", sys, str(get_ter_sacrebleu(sentences[sys], ref, args.language))]))
         logging.warning("TER Computed")
 
-    #ter_sentences = {}
-    #for sys in sentences:
-    #    with codecs.open(os.path.join(sys + "_TER_DIR", 'sys1.opt1'), 'r', 'utf8') as ifh:
-    #        ter_sentences[sys] = [float(s.strip().split('|||')[-2].split('=')[-1]) for s in ifh.readlines()]
-            
-    #bleu_sentences = {}
-    #for sys in sentences:
-    #    with codecs.open(os.path.join(sys + "_BLEU_DIR", 'sys1.opt1'), 'r', 'utf8') as ifh:
-    #        bleu_sentences[sys] = [float(s.strip().split('|||')[-2].split('=')[-1]) for s in ifh.readlines()]
+        print(" ".join(["chrF", sys, str(get_chrf_sacrebleu(sentences[sys], ref, args.language))]))
+        logging.warning("chrF Computed")
 
     # 3. read the other variables.
-#    iters = int(args.iterations)
-#    sample_size = int(args.sample_size)
-#    sample_idxs = np.random.randint(0, length, size=(iters, sample_size))
+    iters = int(args.iterations)
+    sample_size = int(args.sample_size)
+    sample_idxs = np.random.randint(0, length, size=(iters, sample_size))
 
     # 4. Compute Sample metric
-#    metrics = {}
-#    for sys in sentences:
-#        metrics['bleu_sacrebleu'] = {}
-#        metrics['ter'] = {}
-#        metrics['bleu_multeval'] = {}
+    if len(sentences) > 1:
+        metrics = {}
+        metrics['bleu_sacrebleu'] = {}
+        metrics['ter_sacrebleu'] = {}
+        metrics['chrf_sacrebleu'] = {}
         
-#    for sys in sentences:
-#        metrics['bleu_sacrebleu'][sys] = compute_metric('get_bleu_sacrebleu', sentences[sys], ref, args.language, sample_idxs, iters)
-#        metrics['ter'][sys] = compute_metric('get_ter', sentences[sys], ter_sentences[sys], args.language, sample_idxs, iters)
-#        metrics['bleu_multeval'][sys] = compute_metric('get_bleu', sentences[sys], bleu_sentences[sys], args.language, sample_idxs, iters)
+        for sys in sentences:
+            metrics['bleu_sacrebleu'][sys] = compute_metric('get_bleu_sacrebleu', sentences[sys], ref, args.language, sample_idxs, iters)
+            metrics['ter_sacrebleu'][sys] = compute_metric('get_ter_sacrebleu', sentences[sys], ref, args.language, sample_idxs, iters)
+            metrics['chrf_sacrebleu'][sys] = compute_metric('get_chrf_sacrebleu', sentences[sys], ref, args.language, sample_idxs, iters)
 
-#    for metric in metrics:
-#        print("-------------------------------------------------")
-#        print('\t'.join([metric, metrics[metric]]))
-#        sign_scores = compute_significance(metrics[metric], iters)
-#        print_latex_table(sign_scores, metric)
-#        sign_scores = compute_ttest_scikit(metrics[metric], iters)
-#        print_latex_table(sign_scores, metric)
+        for metric in metrics:
+            print("---------------- " + metric + " -----------------")
+            print('\t'.join([sys for sys in sentences])) # a bit of a redundant, but to check the order
+            # print(metric + '\t' + '\t'.join([metrics[metric][sys] for sys in sentences]))
+            sign_scores = compute_significance(metrics[metric], iters)
+            print_latex_table(sign_scores, metric)
+            sign_scores = compute_ttest_scikit(metrics[metric], iters)
+            print_latex_table(sign_scores, metric)
+    else:
+        logging.warning("Only one system hypothesis provided! No significance test!")
         
 if __name__ == "__main__":
     main()
